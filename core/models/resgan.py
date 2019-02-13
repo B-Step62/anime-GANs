@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from core.models.modules import ResBlock, OptimizedBlock
+from core.models.modules import ResGenBlock, ResDisBlock, OptimizedBlock
 
 class ResGenerator128(nn.Module):
 
@@ -13,15 +13,15 @@ class ResGenerator128(nn.Module):
 
         self.l1 = nn.Linear(z_dim, (self.bottom_size ** 2) * base)
 
-        self.rb1 = ResBlock(base, base//2, upsample=True, norm=norm)
+        self.rb1 = ResGenBlock(base, base//2, upsample=True, norm=norm)
         base = base // 2
-        self.rb2 = ResBlock(base, base//2, upsample=True, norm=norm)
+        self.rb2 = ResGenBlock(base, base//2, upsample=True, norm=norm)
         base = base // 2
-        self.rb3 = ResBlock(base, base//2, upsample=True, norm=norm)
+        self.rb3 = ResGenBlock(base, base//2, upsample=True, norm=norm)
         base = base // 2
-        self.rb4 = ResBlock(base, base//2, upsample=True, norm=norm)
+        self.rb4 = ResGenBlock(base, base//2, upsample=True, norm=norm)
         base = base // 2
-        self.rb5 = ResBlock(base, base//2, upsample=True, norm=norm)
+        self.rb5 = ResGenBlock(base, base//2, upsample=True, norm=norm)
         base = base // 2
 
         last_layers = []
@@ -51,13 +51,13 @@ class ResDiscriminator128(nn.Module):
         self.base = base
 
         self.ob1 = OptimizedBlock(3, base, downsample=True, norm=norm)
-        self.rb2 = ResBlock(base, base*2, downsample=True, norm=norm)
+        self.rb2 = ResDisBlock(base, base*2, downsample=True, norm=norm)
         base *= 2
-        self.rb3 = ResBlock(base, base*2, downsample=True, norm=norm)
+        self.rb3 = ResDisBlock(base, base*2, downsample=True, norm=norm)
         base *= 2
-        self.rb4 = ResBlock(base, base*2, downsample=True, norm=norm)
+        self.rb4 = ResDisBlock(base, base*2, downsample=True, norm=norm)
         base *= 2
-        self.rb5 = ResBlock(base, base*2, downsample=True, norm=norm)
+        self.rb5 = ResDisBlock(base, base*2, downsample=True, norm=norm)
         base *= 2
 
         linear_layers = []
