@@ -35,7 +35,7 @@ class ResGenBlock(nn.Module):
             nn.init.zeros_(self.conv_sc.bias)
 
     def forward(self, x, y=None):
-        use_norm = self.norm != None
+        assert not (y is None and self.norm=='c_batch') 
         h = x
         if self.norm == 'c_batch':
             h = self.activation(self.norm1(h, y)) 

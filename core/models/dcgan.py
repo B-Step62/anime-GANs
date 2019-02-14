@@ -115,7 +115,7 @@ class Discriminator64(nn.Module):
 
 class Generator128(nn.Module):
 
-    def __init__(self, z_dim=64, top=512, norm='batch'):
+    def __init__(self, z_dim=64, top=1024, norm='batch'):
         super(Generator128, self).__init__()
         self.top = top
         self.bottom_size = 8
@@ -132,21 +132,21 @@ class Generator128(nn.Module):
         linear_layers.append(nn.ReLU())
 
         conv_layers1 = []
-        conv_layers1.append(nn.ConvTranspose2d(top, top//2, 4, 2, 1))
+        conv_layers1.append(nn.ConvTranspose2d(top, top//2, 8, 2, 3))
         if norm == 'batch':
             conv_layers1.append(nn.BatchNorm2d(top//2))
         conv_layers1.append(nn.ReLU())
         top = top // 2
  
         conv_layers2 = []
-        conv_layers2.append(nn.ConvTranspose2d(top, top//2, 4, 2, 1))
+        conv_layers2.append(nn.ConvTranspose2d(top, top//2, 8, 2, 3))
         if norm == 'batch':
             conv_layers2.append(nn.BatchNorm2d(top//2))
         conv_layers2.append(nn.ReLU())
         top = top // 2
  
         conv_layers3 = []
-        conv_layers3.append(nn.ConvTranspose2d(top, top//2, 4, 2, 1))
+        conv_layers3.append(nn.ConvTranspose2d(top, top//2, 8, 2, 3))
         if norm == 'batch':
             conv_layers3.append(nn.BatchNorm2d(top//2))
         conv_layers3.append(nn.ReLU())
@@ -175,26 +175,26 @@ class Generator128(nn.Module):
             
 class Discriminator128(nn.Module):
 
-    def __init__(self, top=64, norm=None, use_sigmoid=True):
+    def __init__(self, top=128, norm=None, use_sigmoid=True):
         super(Discriminator128, self).__init__()
         self.top = top
         self.bottom_size = 16
 
         conv_layers1 = []
-        conv_layers1.append(nn.Conv2d(3, top, 4, 2, 1))
+        conv_layers1.append(nn.Conv2d(3, top, 8, 2, 3))
         if norm == 'batch':
             conv_layers1.append(nn.BatchNorm2d(top))
         conv_layers1.append(nn.LeakyReLU(0.1))
  
         conv_layers2 = []
-        conv_layers2.append(nn.Conv2d(top, top*2, 4, 2, 1))
+        conv_layers2.append(nn.Conv2d(top, top*2, 8, 2, 3))
         if norm == 'batch':
             conv_layers2.append(nn.BatchNorm2d(top*2))
         conv_layers2.append(nn.LeakyReLU(0.1))
         top = top * 2
  
         conv_layers3 = []
-        conv_layers3.append(nn.Conv2d(top, top*2, 4, 2, 1))
+        conv_layers3.append(nn.Conv2d(top, top*2, 8, 2, 3))
         if norm == 'batch':
             conv_layers3.append(nn.BatchNorm2d(top*2))
         conv_layers3.append(nn.LeakyReLU(0.1))

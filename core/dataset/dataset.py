@@ -1,11 +1,11 @@
 import os
+import sys
 import glob
 import numpy as np
 import cv2
 import torch
 from torch.utils.data import Dataset
 import core.utils.transforms as tf
-
 
 class FaceDataset(Dataset):
 
@@ -65,12 +65,30 @@ class MultiClassFaceDataset(Dataset):
         self.imsize = cfg.train.target_size
         root_path_list = cfg.train.dataset_list
 
-        self.image_path_list, self.classes, self.len_list = [],[],[]
-        for i in range(len(root_path_list)):
-            image_paths = sorted(glob.glob(os.path.join(root_path_list[i], '*.png'))) + sorted(glob.glob(os.path.join(root_path_list[i], '*.jpg')))
-            self.image_path_list.append(image_paths)
-            self.classes.append(i)
-            self.len_list.append(len(image_paths))
+
+        if os.path.isfile(root_path_list):
+        ## danbooru face dataset
+            with open(root_path_list, 'r') as f:
+                line = f.readline().strip()
+                self.tag_list = line.split(',')
+                n_classes = len(self.tag_list)
+                self.image_path_list = [[] for t in range(n_classes)]
+                self.classes = [t for t in range(n_classes)]
+                self.len_list = [0 for t in range(n_classes)]
+                line = f.readline().strip()
+                while(line):
+                    image_path, cls = line.split(' ')
+                    self.image_path_list[int(cls)].append(image_path)
+                    self.len_list[int(cls)] += 1
+                    line = f.readline().strip()
+        ## million face dataset
+        else:
+            self.image_path_list, self.classes, self.len_list = [],[],[]
+            for i in range(len(root_path_list)):
+                image_paths = sorted(glob.glob(os.path.join(root_path_list[i], '*.png'))) + sorted(glob.glob(os.path.join(root_path_list[i], '*.jpg')))
+                self.image_path_list.append(image_paths)
+                self.classes.append(i)
+                self.len_list.append(len(image_paths))
 
     def __len__(self):
         return sum(self.len_list)

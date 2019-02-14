@@ -68,9 +68,7 @@ class SNResNetProjectionDiscriminator128(torch.nn.Module):
             spectral_norm(self.l_y)
 
     def forward(self, x, y=None):
-        if self.n_classes > 0 and y is None:
-            print('#!#!#!#!#!#! input y have to be input to conditional Discriminator. #!#!#!#!#!#!')
-            sys.exit()
+        assert not(self.n_classes > 0 and y is None)
         h = x
         h = self.block1(h)
         h = self.block2(h)
