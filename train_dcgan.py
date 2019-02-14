@@ -11,9 +11,9 @@ from torch.optim import Adam
 from torch.autograd import Variable
 from torchvision.utils import save_image
 
-from core.models import dcgan, resgan
-from core.dataset.dataset import FaceDataset
-from core.utils.config import Config
+from dcgan.models import dcgan
+from common.dataset.dataset import FaceDataset
+from common.utils.config import Config
 
 def parse_args():
     parser = argparse.ArgumentParser(description='DCGAN')

@@ -12,9 +12,9 @@ from torch.optim import Adam
 from torch.autograd import Variable
 from torchvision.utils import save_image
 
-from core.models import dcgan, sn_projection 
-from core.dataset.dataset import MultiClassFaceDataset
-from core.utils.config import Config
+from sn_projection.models import sn_projection 
+from common.dataset.dataset import MultiClassFaceDataset
+from common.utils.config import Config
 
 def parse_args():
     parser = argparse.ArgumentParser(description='MultiClassGAN')
@@ -59,9 +59,8 @@ def main():
         device = 'cpu'
 
 
-    if cfg.models.model_type == 'sn_projection':
-        gen = getattr(sn_projection, cfg.models.generator.name)(z_dim=cfg.models.generator.z_dim, norm=cfg.models.generator.norm, n_classes=cfg.train.n_classes).to(device)
-        dis = getattr(sn_projection, cfg.models.discriminator.name)(norm=cfg.models.discriminator.norm, n_classes=cfg.train.n_classes).to(device)
+    gen = getattr(sn_projection, cfg.models.generator.name)(z_dim=cfg.models.generator.z_dim, norm=cfg.models.generator.norm, n_classes=cfg.train.n_classes).to(device)
+    dis = getattr(sn_projection, cfg.models.discriminator.name)(norm=cfg.models.discriminator.norm, n_classes=cfg.train.n_classes).to(device)
 
     train_dataset = MultiClassFaceDataset(cfg)
     train_loader = torch.utils.data.DataLoader(

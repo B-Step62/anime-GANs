@@ -5,8 +5,8 @@ from torch import nn
 import torch.nn.functional as F
 from torch.nn.utils import spectral_norm
 
-from core.models.modules import ResGenBlock, ResDisBlock, OptimizedBlock
-from core.models.links import BatchNorm2d
+from common.modules.resblocks import ResGenBlock, ResDisBlock, OptimizedBlock
+from common.modules.batchnorm import BatchNorm2d
 
 class ResNetGenerator128(torch.nn.Module):
     def __init__(self, base=64, z_dim=128, bottom_width=4, activation=F.relu, norm=None, n_classes=0):

@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils import spectral_norm
 
-from core.models.links import CategoricalConditionalBatchNorm
+from common.modules.batchnorm import CategoricalConditionalBatchNorm
 
 class ResGenBlock(nn.Module):
     def __init__(self, in_channels, out_channels, hidden_channels=None, ksize=3, stride=1, pad=1, activation=F.relu, upsample=False, n_classes=0, norm=None):
