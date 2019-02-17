@@ -55,7 +55,7 @@ class ResNetProjectionDiscriminator128(torch.nn.Module):
         self.block3 = ResDisBlock(base * 2, base * 4, activation=activation, downsample=True, norm=norm)
         self.block4 = ResDisBlock(base * 4, base * 8, activation=activation, downsample=True, norm=norm)
         self.block5 = ResDisBlock(base * 8, base * 16, activation=activation, downsample=True, norm=norm)
-        #self.block6 = ResDisBlock(base * 16, base * 16, activation=activation, downsample=True, norm=norm)
+        self.block6 = ResDisBlock(base * 16, base * 16, activation=activation, downsample=True, norm=norm)
         self.l7 = torch.nn.Linear(base * 16, 1)
         torch.nn.init.xavier_uniform_(self.l7.weight)
         torch.nn.init.zeros_(self.l7.bias)
@@ -75,7 +75,7 @@ class ResNetProjectionDiscriminator128(torch.nn.Module):
         h = self.block3(h)
         h = self.block4(h)
         h = self.block5(h)
-        #h = self.block6(h)
+        h = self.block6(h)
         h = self.activation(h)
         h = h.sum([2, 3])  #global pooling
         output = self.l7(h)

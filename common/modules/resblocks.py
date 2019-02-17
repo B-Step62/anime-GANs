@@ -18,14 +18,18 @@ class ResGenBlock(nn.Module):
         self.conv1 = nn.Conv2d(in_channels, hidden_channels, ksize, stride, pad)
         nn.init.xavier_uniform_(self.conv1.weight, gain=(2**0.5))
         nn.init.zeros_(self.conv1.bias)
+        if norm == 'spectral' or norm == 'spectral+batch':
+            spectral_norm(self.conv1)
         self.conv2 = nn.Conv2d(hidden_channels, out_channels, ksize, stride, pad)
         nn.init.xavier_uniform_(self.conv2.weight, gain=(2**0.5))
         nn.init.zeros_(self.conv2.bias)
+        if norm == 'spectral' or norm == 'spectral+batch':
+            spectral_norm(self.conv2)
 
         if n_classes > 0 and norm == 'c_batch':
             self.norm1 = CategoricalConditionalBatchNorm(in_channels, n_classes)
             self.norm2 = CategoricalConditionalBatchNorm(hidden_channels, n_classes)
-        elif norm == 'batch':
+        elif norm == 'batch' or self.norm == 'spectral+batch':
             self.norm1 = nn.BatchNorm2d(in_channels)
             self.norm2 = nn.BatchNorm2d(hidden_channels)
 
@@ -39,14 +43,14 @@ class ResGenBlock(nn.Module):
         h = x
         if self.norm == 'c_batch':
             h = self.activation(self.norm1(h, y)) 
-        elif self.norm == 'batch':
+        elif self.norm == 'batch' or self.norm == 'spectral+batch':
             h = self.activation(self.norm1(h)) 
         else:
             self.activation(h)
         h = self.conv1(h)
         if self.norm == 'c_batch':
             h = self.activation(self.norm2(h, y))
-        elif self.norm == 'batch':
+        elif self.norm == 'batch' or self.norm == 'spectral+batch':
             h = self.activation(self.norm2(h))
         else:
             self.activation(h)
@@ -116,17 +120,17 @@ class OptimizedBlock(nn.Module):
         nn.init.xavier_uniform_(self.conv1.weight, gain=(2**0.5))
         nn.init.zeros_(self.conv1.bias)
         if norm == 'spectral':
-            sepectral_norm(self.conv1)
+            spectral_norm(self.conv1)
         self.conv2 = nn.Conv2d(out_channels, out_channels, ksize, stride, pad)
         nn.init.xavier_uniform_(self.conv2.weight, gain=(2**0.5))
         nn.init.zeros_(self.conv2.bias)
         if norm == 'spectral':
-            sepectral_norm(self.conv2)
+            spectral_norm(self.conv2)
         self.conv_sc = nn.Conv2d(in_channels, out_channels, 1, 1, 0)
         nn.init.xavier_uniform_(self.conv_sc.weight)
         nn.init.zeros_(self.conv_sc.bias)
         if norm == 'spectral':
-            sepectral_norm(self.conv_sc)
+            spectral_norm(self.conv_sc)
 
     def forward(self, x):
         h = x
