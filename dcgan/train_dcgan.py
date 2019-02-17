@@ -11,9 +11,12 @@ from torch.optim import Adam
 from torch.autograd import Variable
 from torchvision.utils import save_image
 
-from dcgan.models import dcgan
+sys.path.append(os.pardir)
+from models import dcgan
 from common.dataset.dataset import FaceDataset
 from common.utils.config import Config
+from common.utils.poly_lr_scheduler import poly_lr_scheduler
+from common.functions.gradient_penalty import gradient_penalty
 
 def parse_args():
     parser = argparse.ArgumentParser(description='DCGAN')
@@ -174,43 +177,6 @@ def main():
                 x_fake = (x_fake[:min(16, batchsize),:,:,:] + 1.0) * 0.5
                 save_image(x_fake.data.cpu(), os.path.join(out, 'preview', f'iter_{iteration:04d}.png'))
 
-
-def gradient_penalty(x_real, x_fake, dis):
-    epsilon = torch.rand(x_real.shape[0], 1, 1, 1).to(device).expand_as(x_real)
-    x_hat = Variable(epsilon * x_real.data + (1 - epsilon) * x_fake.data, requires_grad=True)
-    d_hat = dis(x_hat)
-
-    grad = torch.autograd.grad(outputs=d_hat,
-                               inputs=x_hat,
-                               grad_outputs=torch.ones(d_hat.shape).to(device),
-                               retain_graph=True,
-                               create_graph=True,
-                               only_inputs=True)[0]
-
-    grad = grad.view(grad.shape[0], -1)
-    grad_norm = torch.sqrt(torch.sum(grad ** 2, dim=1))
-    d_loss_gp = torch.mean((grad_norm - 1) ** 2)
-
-    return d_loss_gp
-
-def poly_lr_scheduler(optimizer, init_lr, iteration, lr_decay_iter=1,
-                      max_iter=100, power=0.9):
-    """Polynomial decay of learning rate
-        :param init_lr is base learning rate
-        :param iter is a current iteration
-        :param lr_decay_iter how frequently decay occurs, default is 1
-        :param max_iter is number of maximum iterations
-        :param power is a polymomial power
-
-    """
-    if iteration % lr_decay_iter or iteration > max_iter:
-        return optimizer
-
-    lr = init_lr*(1 - iteration/max_iter)**power
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
-
-    return lr
 
 if __name__ == '__main__':
     main()

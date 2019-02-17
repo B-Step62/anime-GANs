@@ -1,227 +1,222 @@
-import numpy as np
-import torch
-from torch import nn
-import torch.nn.functional as F
+# -*- coding: utf-8 -*-
+from models.base_model import *
 
 
-def PGConv2d(nn.Module):
-    def __init__(self, ch_in, ch_out, ksize=3, stride=1, pad=1, pixelnorm=True, wscale=True, activation='leaky_relu'):
-        super(PGConv2d, self).__init()
-        # weight initialize
-        init = lambda x: nn.init.kaiming_normal(x) if wscale else lambda x: x
-        self.conv = nn.Conv2d(ch_in, ch_out, ksize, stride, pad)
-        init(self.conv.weight)
-        self.c = np.sqrt(torch.mean(self.conv.weight.data ** 2)) if wscale else 1.
-        self.conv.weight.data /= self.c
-        self.eps = 1e-8
-
-        self.pixelnorm = pixelnorm
-        if activation is not None
-            self.activation = nn.LeakyReLU(0.2) if activation == 'leaky_relu' else nn.ReLU()
-        else:
-            self.activation = None
-        self.conv.cuda()
-
-    def forward(self, x):
-        h = x * self.c
-        h = self.conv(h)
-        if self.activation is not None:
-            h = self.activation(h)
-        if self.pixelnorm:
-            mean = torch.mean(h * h, 1, keepdim=True == 'leaky_relu' else nn.ReLU()
-            h *= torch.rsprt(mean + self.eps)
-        return h
-
-class GFirstBlock(nn.Module):
-    def __init__(self, ch_in, ch_out, num_channels, **layer_settings):
-        super(GFirstBlock, self).__init__()
-        self.c1 = PGConv2d(ch_in, ch_out, 4, 1, 3, **layer_settings)
-        self.c2 = PGConv2d(ch_out, ch_out, **layer_settings)
-        self.toRGB = PGConv2d(ch_out, num_channels, ksize=1, pad=0, pixelnorm=False, activation=None)
-
-    def forward(self, x, last=False):
-        x = self.c1(x)
-        x = self.c2(x)
-        if last:
-            return self.toRGB(x)
-        return x
+def G_conv(incoming, in_channels, out_channels, kernel_size, padding, nonlinearity, init, param=None, 
+        to_sequential=True, use_wscale=True, use_batchnorm=False, use_pixelnorm=True):
+    layers = incoming
+    layers += [nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=1, padding=padding)]
+    he_init(layers[-1], init, param)  # init layers
+    if use_wscale:
+        layers += [WScaleLayer(layers[-1])]
+    layers += [nonlinearity]
+    if use_batchnorm:
+        layers += [nn.BatchNorm2d(out_channels)]
+    if use_pixelnorm:
+        layers += [PixelNormLayer()]
+    if to_sequential:
+        return nn.Sequential(*layers)
+    else:
+        return layers
 
 
-class GBlock(nn.Module):
-    def __init__(self, ch_in, ch_out, num_channels, **layer_settings):
-        super(GBlock, self).__init__()
-        self.c1 = PGConv2d(ch_in, ch_out, **layer_settings)
-        self.c2 = PGConv2d(ch_out, ch_out, **layer_settings)
-        self.toRGB = PGConv2d(ch_out, num_channels, ksize=1, pad=0, pixelnorm=False, activation=None)
+def NINLayer(incoming, in_channels, out_channels, nonlinearity, init, param=None, 
+            to_sequential=True, use_wscale=True):
+    layers = incoming
+    layers += [nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1, padding=0)]  # NINLayer in lasagne
+    he_init(layers[-1], init, param)  # init layers
+    if use_wscale:
+        layers += [WScaleLayer(layers[-1])]
+    if not (nonlinearity == 'linear'):
+        layers += [nonlinearity]
+    if to_sequential:
+        return nn.Sequential(*layers)
+    else:
+        return layers
 
-    def forward(self, x, last=False):
-        x = self.c1(x)
-        x = self.c2(x)
-        if last:
-            x = self.toRGB(x)
-        return x
 
-
-
-def Generator(nn.Module):
+class Generator(nn.Module):
     def __init__(self, 
-        dataset_shape,
-        fmap_base           = 4096
-        fmap_decay          = 1.0,
-        fmap_max            = 512,
-        latent_size         = 512,
-        normalize_latents   = True,
-        wscale          = True,
-        pixelnorm       = True,
-        leakyrelu       = True):
+                num_channels        = 1,        # Overridden based on dataset.
+                resolution          = 32,       # Overridden based on dataset.
+                label_size          = 0,        # Overridden based on dataset.
+                fmap_base           = 4096,
+                fmap_decay          = 1.0,
+                fmap_max            = 256,
+                latent_size         = None,
+                normalize_latents   = True,
+                use_wscale          = True,
+                use_pixelnorm       = True,
+                use_leakyrelu       = True,
+                use_batchnorm       = False,
+                tanh_at_end         = None):
         super(Generator, self).__init__()
-
-        resolution = dataset_shape[-1]
-        num_channels = dataset_shape[1]
+        self.num_channels = num_channels
+        self.resolution = resolution
+        self.label_size = label_size
+        self.fmap_base = fmap_base
+        self.fmap_decay = fmap_decay
+        self.fmap_max = fmap_max
+        self.latent_size = latent_size
+        self.normalize_latents = normalize_latents
+        self.use_wscale = use_wscale
+        self.use_pixelnorm = use_pixelnorm
+        self.use_leakyrelu = use_leakyrelu
+        self.use_batchnorm = use_batchnorm
+        self.tanh_at_end = tanh_at_end
 
         R = int(np.log2(resolution))
-        assert resolution == 2 ** R and resolution >= 4
+        assert resolution == 2**R and resolution >= 4
+        if latent_size is None: 
+            latent_size = self.get_nf(0)
 
+        negative_slope = 0.2
+        act = nn.LeakyReLU(negative_slope=negative_slope) if self.use_leakyrelu else nn.ReLU()
+        iact = 'leaky_relu' if self.use_leakyrelu else 'relu'
+        output_act = nn.Tanh() if self.tanh_at_end else 'linear'
+        output_iact = 'tanh' if self.tanh_at_end else 'linear'
 
-        def nf(stage):
-            return min(int(fmap_base / (2.0 ** (stage * fmap_decay))), fmap_max)
+        pre = None
+        lods = nn.ModuleList()
+        nins = nn.ModuleList()
+        layers = []
 
-        if latent_size is None:
-            latent_size = nf(0)
-
-        self.normalize_latents = normalize_latents
-        layer_settings = {
-            'wscale' : wscale,
-            'pixelnorm' : pixelnorm,
-            'activation' : 'leaky_relu' if leakyrelu else 'relu'
-        }
-        self.block0 = GFirstBlock(latent_size, nf(1), num_channels, **layer_settings)
-        self.blocks = nn.ModuleList([
-            GBlock(nf(i-1), nf(i), num_channels, **layer_settings)
-            for i in range(2, R)
-        ])
-
-        self.depth = 0
-        self.alpha = 1.0
-        self.eps = 1e-8
-        self.latent_size = latent_size
-        self.max_depth = len(self.blocks)
-
-    def forward(self, x):
-        h = x.unsqueeze(2).unsqueeze(3)
         if self.normalize_latents:
-            mean = torch.mean(h * h, 1, keepdim=True)
-            h *= torch.rsqrt(mean + self.eps)
-        h = self.block0(h, self.depth == 0)
-        if self.depth > 0:
-            for i in range(self.depth - 1):
-                h = F.upsample(h, scale_factor=2)
-                h = self.blocks[i](h)
-            h = F.upsample(h, scale_factor=2)
-            ult = self.blocks[self.depth - 1](h, True)
-            if self.alpha < 1.0:
-                preult_rgb = self.blocks[self.depth - 2].toRGB(h) if self.alpha < 1.0 else self.block0.toRGB(h)
-            else:
-                preult_rgb = 0
-            h = preult_rgb * (1 - self.alpha) + ult * self.alpha
-        return h
+            pre = PixelNormLayer()
+
+        if self.label_size:
+            layers += [ConcatLayer()]
+
+        layers += [ReshapeLayer([latent_size, 1, 1])]
+        layers = G_conv(layers, latent_size, self.get_nf(1), 4, 3, act, iact, negative_slope, 
+                    False, self.use_wscale, self.use_batchnorm, self.use_pixelnorm) 
+        net = G_conv(layers, latent_size, self.get_nf(1), 3, 1, act, iact, negative_slope, 
+                    True, self.use_wscale, self.use_batchnorm, self.use_pixelnorm)  # first block
+        
+        lods.append(net)
+        nins.append(NINLayer([], self.get_nf(1), self.num_channels, output_act, output_iact, None, True, self.use_wscale))  # to_rgb layer
+
+        for I in range(2, R):  # following blocks
+            ic, oc = self.get_nf(I-1), self.get_nf(I)
+            layers = [nn.Upsample(scale_factor=2, mode='nearest')]  # upsample
+            layers = G_conv(layers, ic, oc, 3, 1, act, iact, negative_slope, False, self.use_wscale, self.use_batchnorm, self.use_pixelnorm)
+            net = G_conv(layers, oc, oc, 3, 1, act, iact, negative_slope, True, self.use_wscale, self.use_batchnorm, self.use_pixelnorm)
+            lods.append(net)
+            nins.append(NINLayer([], oc, self.num_channels, output_act, output_iact, None, True, self.use_wscale))  # to_rgb layer
+
+        self.output_layer = GSelectLayer(pre, lods, nins)
+
+    def get_nf(self, stage):
+        return min(int(self.fmap_base / (2.0 ** (stage * self.fmap_decay))), self.fmap_max)
+
+    def forward(self, x, y=None, cur_level=None, insert_y_at=None):
+        return self.output_layer(x, y, cur_level, insert_y_at)
 
 
-class DBlock(nn.Module):
-    def __init__(self, ch_in, ch_out, num_channels, **layer_settings):
-        super(DBlock, self).__init__()
-        self.fromRGB = PGConv2d(num_channels, ch_in, ksize=1, pad=0, pixelnorm=False)
-        self.c1 = PGConv2d(ch_in, ch_in, **layer_settings)
-        self.c2 = PGConv2d(ch_in, ch_out, **layer_settings)
-
-    def forward(self, x, first=False):
-        if first:
-            x = self.fromRGB(x)
-        x = self.c1(x)
-        x = self.c2(x)
-        return x
-
-
-class DLastBlock(nn.Module):
-    def __init__(self, ch_in, ch_out, num_channels, **layer_settings):
-        super(DLastBlock, self).__init__()
-        self.fromRGB = PGConv2d(num_channels, ch_in, ksize=1, pad=0, pixelnorm=False)
-        self.stddev = MinibatchStddev()
-        self.c1 = PGConv2d(ch_in + 1, ch_in, **layer_settings)
-        self.c2 = PGConv2d(ch_in, ch_out, 4, 1, 0, **layer_settings)
-
-    def forward(self, x, first=False):
-        if first:
-            x = self.fromRGB(x)
-        x = self.stddev(x)
-        x = self.c1(x)
-        x = self.c2(x)
-        return x
-
-
-def Tstdeps(val):
-    return torch.sqrt(((val - val.mean())**2).mean() + 1.0e-8)
-
-
-class MinibatchStddev(nn.Module):
-    def __init__(self):
-        super(MinibatchStddev, self).__init__()
-        self.eps = 1.0
-
-    def forward(self, x):
-        stddev_mean = Tstdeps(x)
-        new_channel = stddev_mean.expand(x.size(0), 1, x.size(2), x.size(3))
-        h = torch.cat((x, new_channel), dim=1)
-        return h
+def D_conv(incoming, in_channels, out_channels, kernel_size, padding, nonlinearity, init, param=None, 
+        to_sequential=True, use_wscale=True, use_gdrop=True, use_layernorm=False, gdrop_param=dict()):
+    layers = incoming
+    if use_gdrop:
+        layers += [GDropLayer(**gdrop_param)]
+    layers += [nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=1, padding=padding)]
+    he_init(layers[-1], init, param)  # init layers
+    if use_wscale:
+        layers += [WScaleLayer(layers[-1])]
+    layers += [nonlinearity]
+    if use_layernorm:
+        layers += [LayerNormLayer()]  # TODO: requires incoming layer
+    if to_sequential:
+        return nn.Sequential(*layers)
+    else:
+        return layers
 
 
 class Discriminator(nn.Module):
-    def __init__(self,
-        dataset_shape, # Overriden based on dataset
-        fmap_base           = 4096,
-        fmap_decay          = 1.0,
-        fmap_max            = 512,
-        wscale          = True,
-        pixelnorm       = False,
-        leakyrelu       = True):
+    def __init__(self, 
+                num_channels    = 1,        # Overridden based on dataset.
+                resolution      = 32,       # Overridden based on dataset.
+                label_size      = 0,        # Overridden based on dataset.
+                fmap_base       = 4096,
+                fmap_decay      = 1.0,
+                fmap_max        = 256,
+                mbstat_avg      = 'all',
+                mbdisc_kernels  = None,
+                use_wscale      = True,
+                use_gdrop       = True,
+                use_layernorm   = False,
+                sigmoid_at_end  = False):
         super(Discriminator, self).__init__()
+        self.num_channels = num_channels
+        self.resolution = resolution
+        self.label_size = label_size
+        self.fmap_base = fmap_base
+        self.fmap_decay = fmap_decay
+        self.fmap_max = fmap_max
+        self.mbstat_avg = mbstat_avg
+        self.mbdisc_kernels = mbdisc_kernels
+        self.use_wscale = use_wscale
+        self.use_gdrop = use_gdrop
+        self.use_layernorm = use_layernorm
+        self.sigmoid_at_end = sigmoid_at_end
 
-        resolution = dataset_shape[-1]
-        num_channels = dataset_shape[1]
         R = int(np.log2(resolution))
-        assert resolution == 2 ** R and resolution >= 4
-        self.R = R
+        assert resolution == 2**R and resolution >= 4
+        gdrop_strength = 0.0
 
-        def nf(stage):
-            return min(int(fmap_base / (2.0 ** (stage * fmap_decay))), fmap_max)
-        layer_settings = {
-            'wscale': wscale,
-            'pixelnorm': pixelnorm,
-            'act': 'lrelu' if leakyrelu else 'relu'
-        }
-        self.blocks = nn.ModuleList([
-            DBlock(nf(i), nf(i-1), num_channels, **layer_settings)
-            for i in range(R-1, 1, -1)
-        ] + [DLastBlock(nf(1), nf(0), num_channels, **layer_settings)])
+        negative_slope = 0.2
+        act = nn.LeakyReLU(negative_slope=negative_slope)
+        # input activation
+        iact = 'leaky_relu'
+        # output activation
+        output_act = nn.Sigmoid() if self.sigmoid_at_end else 'linear'
+        output_iact = 'sigmoid' if self.sigmoid_at_end else 'linear'
+        gdrop_param = {'mode': 'prop', 'strength': gdrop_strength}
 
-        self.linear = nn.Linear(nf(0), 1)
-        self.depth = 0
-        self.alpha = 1.0
-        self.eps = 1e-8
-        self.max_depth = len(self.blocks) - 1
+        nins = nn.ModuleList()
+        lods = nn.ModuleList()
+        pre = None
 
-    def forward(self, x):
-        h = self.blocks[-(self.depth + 1)](x, True)
-        if self.depth > 0:
-            h = F.avg_pool2d(h, 2)
-            if self.alpha < 1.0:
-                xlowres = F.avg_pool2d(x, 2)
-                preult_rgb = self.blocks[-self.depth].fromRGB(xlowres)
-                h = h * self.alpha + (1 - self.alpha) * preult_rgb
+        nins.append(NINLayer([], self.num_channels, self.get_nf(R-1), act, iact, negative_slope, True, self.use_wscale))
 
-        for i in range(self.depth, 0, -1):
-            h = self.blocks[-i](h)
-            if i > 1:
-                h = F.avg_pool2d(h, 2)
-        h = self.linear(h.squeeze(-1).squeeze(-1))
-        return h
+        for I in range(R-1, 1, -1):
+            ic, oc = self.get_nf(I), self.get_nf(I-1)
+            net = D_conv([], ic, ic, 3, 1, act, iact, negative_slope, False, 
+                        self.use_wscale, self.use_gdrop, self.use_layernorm, gdrop_param)
+            net = D_conv(net, ic, oc, 3, 1, act, iact, negative_slope, False, 
+                        self.use_wscale, self.use_gdrop, self.use_layernorm, gdrop_param)
+            net += [nn.AvgPool2d(kernel_size=2, stride=2, ceil_mode=False, count_include_pad=False)]
+            lods.append(nn.Sequential(*net))
+            # nin = [nn.AvgPool2d(kernel_size=2, stride=2, ceil_mode=False, count_include_pad=False)]
+            nin = []
+            nin = NINLayer(nin, self.num_channels, oc, act, iact, negative_slope, True, self.use_wscale)
+            nins.append(nin)
+
+        net = []
+        ic = oc = self.get_nf(1)
+        if self.mbstat_avg is not None:
+            net += [MinibatchStatConcatLayer(averaging=self.mbstat_avg)]
+            ic += 1
+        net = D_conv(net, ic, oc, 3, 1, act, iact, negative_slope, False, 
+                    self.use_wscale, self.use_gdrop, self.use_layernorm, gdrop_param)
+        net = D_conv(net, oc, self.get_nf(0), 4, 0, act, iact, negative_slope, False,
+                    self.use_wscale, self.use_gdrop, self.use_layernorm, gdrop_param)
+
+        # Increasing Variation Using MINIBATCH Standard Deviation
+        if self.mbdisc_kernels:
+            net += [MinibatchDiscriminationLayer(num_kernels=self.mbdisc_kernels)]
+
+        oc = 1 + self.label_size
+        # lods.append(NINLayer(net, self.get_nf(0), oc, 'linear', 'linear', None, True, self.use_wscale))
+        lods.append(NINLayer(net, self.get_nf(0), oc, output_act, output_iact, None, True, self.use_wscale))
+
+        self.output_layer = DSelectLayer(pre, lods, nins)
+
+    def get_nf(self, stage):
+        return min(int(self.fmap_base / (2.0 ** (stage * self.fmap_decay))), self.fmap_max)
+
+    def forward(self, x, y=None, cur_level=None, insert_y_at=None, gdrop_strength=0.0):
+        for module in self.modules():
+            if hasattr(module, 'strength'):
+                module.strength = gdrop_strength
+        return self.output_layer(x, y, cur_level, insert_y_at)
+

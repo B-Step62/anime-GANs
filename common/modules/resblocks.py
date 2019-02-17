@@ -26,8 +26,8 @@ class ResGenBlock(nn.Module):
             self.norm1 = CategoricalConditionalBatchNorm(in_channels, n_classes)
             self.norm2 = CategoricalConditionalBatchNorm(hidden_channels, n_classes)
         elif norm == 'batch':
-            self.norm1 = BatchNorm2d(in_channels)
-            self.norm2 = BatchNorm2d(hidden_channels)
+            self.norm1 = nn.BatchNorm2d(in_channels)
+            self.norm2 = nn.BatchNorm2d(hidden_channels)
 
         if self.learnable_sc:
             self.conv_sc = nn.Conv2d(in_channels, out_channels, 1, 1, 0)
@@ -43,8 +43,6 @@ class ResGenBlock(nn.Module):
             h = self.activation(self.norm1(h)) 
         else:
             self.activation(h)
-        if self.upsample:
-            h = F.upsample(h, scale_factor=2)
         h = self.conv1(h)
         if self.norm == 'c_batch':
             h = self.activation(self.norm2(h, y))
@@ -52,6 +50,8 @@ class ResGenBlock(nn.Module):
             h = self.activation(self.norm2(h))
         else:
             self.activation(h)
+        if self.upsample:
+            h = F.upsample(h, scale_factor=2)
         h = self.conv2(h)
         if self.learnable_sc:
             if self.upsample:
