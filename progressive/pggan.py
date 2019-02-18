@@ -7,6 +7,7 @@ import torch
 import torch.optim as optim
 from torch.autograd import Variable
 from utils.logger import Logger
+from torchvision.utils import save_image
 
 class PGGAN():
     def __init__(self, G, D, dataset, z_generator, device, cfg, G_resume=None):
@@ -259,8 +260,6 @@ class PGGAN():
 
     def train_phase(self, R, phase, batch_size, cur_nimg, from_it, total_it):
         assert total_it >= from_it
-        resol = 2 ** (R+1)
-        print(f'current R:{R} resol:{resol}')
 
         self.dataset.shuffle()
         dataset_len = len(self.dataset)
@@ -269,7 +268,7 @@ class PGGAN():
             if phase == 'stabilize':
                 cur_level = R
             else:
-                cur_level = R + total_it/float(from_it)
+                cur_level = R + total_it/float(from_it) - 1
             cur_resol = 2 ** int(np.ceil(cur_level+1))
 
             # set current image size
@@ -311,8 +310,12 @@ class PGGAN():
             samples = []
             if (it % self.cfg.train.preview_interval == 0) or it == total_it-1:
                 samples = self.sample()
-                imsave(os.path.join(self.sample_dir,
-                                    '%dx%d-%s-%s.png' % (cur_resol, cur_resol, phase, str(it).zfill(6))), samples)
+                #imsave(os.path.join(self.sample_dir,
+                #                    '%dx%d-%s-%s.png' % (cur_resol, cur_resol, phase, str(it).zfill(6))), samples)
+                save_image((self.fake.data.cpu() + 1.0) * 0.5, os.path.join(self.sample_dir, '%dx%d-%s-%s.png' % (cur_resol, cur_resol, phase, str(it).zfill(6))), padding=min(2, cur_resol//8))
+
+            if it == from_it:
+                save_image((self.real.data.cpu() + 1.0) * 0.5, os.path.join(self.sample_dir, '%dx%d_real.png' % (cur_resol, cur_resol)), padding=min(2, cur_resol//8))
 
             # ===tensorboard visualization===
             if (it % self.cfg.train.preview_interval == 0) or it == total_it - 1:
@@ -368,11 +371,11 @@ class PGGAN():
             samples += [np.concatenate(one_row, axis=2)]
         samples = np.concatenate(samples, axis=1).transpose([1, 2, 0])
 
-        half = samples.shape[1] // 2
-        samples[:, :half, :] = samples[:, :half, :] - np.min(samples[:, :half, :])
-        samples[:, :half, :] = samples[:, :half, :] / np.max(samples[:, :half, :])
-        samples[:, half:, :] = samples[:, half:, :] - np.min(samples[:, half:, :])
-        samples[:, half:, :] = samples[:, half:, :] / np.max(samples[:, half:, :])
+        #half = samples.shape[1] // 2
+        #samples[:, :half, :] = samples[:, :half, :] - np.min(samples[:, :half, :])
+        #samples[:, :half, :] = samples[:, :half, :] / np.max(samples[:, :half, :])
+        #samples[:, half:, :] = samples[:, half:, :] - np.min(samples[:, half:, :])
+        #samples[:, half:, :] = samples[:, half:, :] / np.max(samples[:, half:, :])
         return samples
 
     def save(self, file_name):

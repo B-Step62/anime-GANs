@@ -1,17 +1,19 @@
 # -*- coding: utf-8 -*-
 from models.base_model import *
+from models.custom_layers import *
 
 device = 'cpu'
 
 def G_conv(incoming, in_channels, out_channels, kernel_size, padding, activation, init, param=None, to_sequential=True, use_wscale=True, use_batchnorm=False, use_pixelnorm=True, device='cpu'):
     layers = incoming
-    layers += [nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=1, padding=padding)]
-    he_init(layers[-1], init, param)  # init layers
     if use_wscale:
-        layers += [WScaleLayer(layers[-1], device)]
+        layers += [wscaled_conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=1, padding=padding)]
+    else:
+        layers += [nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=1, padding=padding)]
+        he_init(layers[-1], init, param)  # init layers
     layers += [activation]
-    if use_batchnorm:
-        layers += [nn.BatchNorm2d(out_channels)]
+    #if use_batchnorm:
+    #    layers += [nn.BatchNorm2d(out_channels)]
     if use_pixelnorm:
         layers += [PixelNormLayer()]
     if to_sequential:
@@ -23,10 +25,11 @@ def G_conv(incoming, in_channels, out_channels, kernel_size, padding, activation
 def NINLayer(incoming, in_channels, out_channels, activation, init, param=None, 
             to_sequential=True, use_wscale=True, device=device):
     layers = incoming
-    layers += [nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1, padding=0)]  # NINLayer in lasagne
-    he_init(layers[-1], init, param)  # init layers
     if use_wscale:
-        layers += [WScaleLayer(layers[-1], device)]
+        layers += [wscaled_conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1, padding=0)]
+    else:
+        layers += [nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1, padding=0)]  # NINLayer in lasagne
+        he_init(layers[-1], init, param)  # init layers
     if not (activation == 'linear'):
         layers += [activation]
     if to_sequential:
@@ -69,8 +72,8 @@ class Generator(nn.Module):
             pre = PixelNormLayer()
 
         layers += [ReshapeLayer([self.z_dim, 1, 1])]
-        layers = G_conv(layers, self.z_dim, self.get_nf(1), 4, 3, act, init_act, negative_slope, False, self.use_wscale, self.use_batchnorm, self.use_pixelnorm, self.device) # instead of linear layer to z 
-        net = G_conv(layers, self.get_nf(1), self.get_nf(1), 3, 1, act, init_act, negative_slope, True, self.use_wscale, self.use_batchnorm, self.use_pixelnorm, self.device)  # first block
+        layers = G_conv(layers, self.z_dim, self.get_nf(1), 4, 3, act, init_act, negative_slope, False, self.use_wscale, self.use_batchnorm, self.use_pixelnorm, device=self.device) # instead of linear layer to z 
+        net = G_conv(layers, self.get_nf(1), self.get_nf(1), 3, 1, act, init_act, negative_slope, True, self.use_wscale, self.use_batchnorm, self.use_pixelnorm, device=self.device)  # first block
     
         lods.append(net)
         nins.append(NINLayer([], self.get_nf(1), 3, output_act, output_init_act, None, True, self.use_wscale, self.device))  # to_rgb layer
@@ -78,10 +81,10 @@ class Generator(nn.Module):
         for I in range(2, R):  # following blocks
             in_ch, out_ch = self.get_nf(I-1), self.get_nf(I)
             layers = [nn.Upsample(scale_factor=2, mode='nearest')]  # upsample
-            layers = G_conv(layers, in_ch, out_ch, 3, 1, act, init_act, negative_slope, False, self.use_wscale, self.use_batchnorm, self.use_pixelnorm, self.device)
-            net = G_conv(layers, out_ch, out_ch, 3, 1, act, init_act, negative_slope, True, self.use_wscale, self.use_batchnorm, self.use_pixelnorm, self.device)
+            layers = G_conv(layers, in_ch, out_ch, 3, 1, act, init_act, negative_slope, False, self.use_wscale, self.use_batchnorm, self.use_pixelnorm, device=self.device)
+            net = G_conv(layers, out_ch, out_ch, 3, 1, act, init_act, negative_slope, True, self.use_wscale, self.use_batchnorm, self.use_pixelnorm, device=self.device)
             lods.append(net)
-            nins.append(NINLayer([], out_ch, 3, output_act, output_init_act, None, True, self.use_wscale, self.device))  # to_rgb layer
+            nins.append(NINLayer([], out_ch, 3, output_act, output_init_act, None, True, self.use_wscale, device=self.device))  # to_rgb layer
         self.output_layer = GSelectLayer(pre, lods, nins)
 
     def get_nf(self, stage):
@@ -96,10 +99,11 @@ def D_conv(incoming, in_channels, out_channels, kernel_size, padding, activation
     layers = incoming
     if use_gdrop:
         layers += [GDropLayer(**gdrop_param)]
-    layers += [nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=1, padding=padding)]
-    he_init(layers[-1], init, param)  # init layers
     if use_wscale:
-        layers += [WScaleLayer(layers[-1], device)]
+        layers += [wscaled_conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=1, padding=padding)]
+    else:
+        layers += [nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=1, padding=padding)]
+        he_init(layers[-1], init, param)  # init layers
     layers += [activation]
     if use_layernorm:
         layers += [LayerNormLayer()]  # TODO: requires incoming layer
@@ -145,14 +149,14 @@ class Discriminator(nn.Module):
         for I in range(R-1, 1, -1):
             in_ch, out_ch = self.get_nf(I), self.get_nf(I-1)
             net = D_conv([], in_ch, in_ch, 3, 1, act, init_act, negative_slope, False, 
-                        self.use_wscale, self.use_gdrop, self.use_layernorm, gdrop_param, self.device)
+                        self.use_wscale, self.use_gdrop, self.use_layernorm, gdrop_param, device=self.device)
             net = D_conv(net, in_ch, out_ch, 3, 1, act, init_act, negative_slope, False, 
-                        self.use_wscale, self.use_gdrop, self.use_layernorm, gdrop_param, self.device)
+                        self.use_wscale, self.use_gdrop, self.use_layernorm, gdrop_param, device=self.device)
             net += [nn.AvgPool2d(kernel_size=2, stride=2, ceil_mode=False, count_include_pad=False)]
             lods.append(nn.Sequential(*net))
             # nin = [nn.AvgPool2d(kernel_size=2, stride=2, ceil_mode=False, count_include_pad=False)]
             nin = []
-            nin = NINLayer(nin, 3, out_ch, act, init_act, negative_slope, True, self.use_wscale, self.device)
+            nin = NINLayer(nin, 3, out_ch, act, init_act, negative_slope, True, self.use_wscale, device=self.device)
             nins.append(nin)
 
         net = []
@@ -161,9 +165,9 @@ class Discriminator(nn.Module):
             net += [MinibatchStatConcatLayer(averaging=self.mbstat_avg)]
             in_ch += 1
         net = D_conv(net, in_ch, out_ch, 3, 1, act, init_act, negative_slope, False, 
-                    self.use_wscale, self.use_gdrop, self.use_layernorm, gdrop_param, self.device)
+                    self.use_wscale, self.use_gdrop, self.use_layernorm, gdrop_param, device=self.device)
         net = D_conv(net, out_ch, self.get_nf(0), 4, 0, act, init_act, negative_slope, False,
-                    self.use_wscale, self.use_gdrop, self.use_layernorm, gdrop_param, self.device)
+                    self.use_wscale, self.use_gdrop, self.use_layernorm, gdrop_param, device=self.device)
 
         # Increasing Variation Using MINIBATCH Standard Deviation
         if self.mbdisc_kernels:
@@ -171,7 +175,7 @@ class Discriminator(nn.Module):
 
         out_ch = 1
         # lods.append(NINLayer(net, self.get_nf(0), oc, 'linear', 'linear', None, True, self.use_wscale))
-        lods.append(NINLayer(net, self.get_nf(0), out_ch, output_act, output_init_act, None, True, self.use_wscale, self.device))
+        lods.append(NINLayer(net, self.get_nf(0), out_ch, output_act, output_init_act, None, True, self.use_wscale, device=self.device))
 
         self.output_layer = DSelectLayer(pre, lods, nins)
 
