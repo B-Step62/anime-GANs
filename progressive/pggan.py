@@ -6,20 +6,21 @@ from scipy.misc import imsave
 import torch
 import torch.optim as optim
 from torch.autograd import Variable
-from common.functions.gradient_penalty import gradient_penalty
 from utils.logger import Logger
 
 class PGGAN():
-    def __init__(self, G, D, dataset, z_generator, gpu, cfg):
+    def __init__(self, G, D, dataset, z_generator, device, cfg, G_resume=None):
         self.G = G
+        self.G_resume = G_resume
         self.D = D
         self.dataset = dataset
         self.cfg = cfg
         self.z_generator = z_generator
         self.current_time = time.strftime('%Y-%m-%d %H%M%S')
         self.logger = Logger('./logs/' + self.current_time + "/")
-        self.use_cuda = gpu >= 0
-        os.environ['CUDA_VISIBLE_DEVICES'] = str(gpu)
+        os.environ['CUDA_VISIBLE_DEVICES'] = "0,1"
+        self.use_cuda = device != 'cpu'
+        self.device = device
 
         self.bs_map = {2**R: self.get_bs(2**R) for R in range(2, 11)} # batch size map keyed by resolution_level
         self.rows_map = {32: 8, 16: 4, 8: 4, 4: 2, 2: 2}
@@ -29,10 +30,23 @@ class PGGAN():
     def restore_model(self):
         self.current_time = time.strftime('%Y-%m-%d %H%M%S')
         self.time = self.current_time
-        self._from_resol = 4
-        self._phase = 'stabilize'
-        self._epoch = 0
-        self.is_restored = False
+        if self.G_resume is not None:
+            pattern = os.path.split(self.G_resume)[1].split('-')
+            self._from_resol = int(pattern[0].split('x')[0])
+            self._phase = pattern[1]
+            self._epoch = int(pattern[2])
+            G_model = self.G_resume
+            D_model = self.G_resume.replace('G','D')
+            assert os.path.exists(G_model) and os.path.exists(D_model)
+            self.G.load_state_dict(torch.load(G_model))
+            self.D.load_state_dict(torch.load(D_model))
+            self.is_restored = True
+            print(f'Restored from {G_model}')
+        else:
+            self._from_resol = 4
+            self._phase = 'stabilize'
+            self._epoch = 0
+            self.is_restored = False
         self.sample_dir = os.path.join(self.cfg.train.out, 'samples')
         self.checkpoint_dir = os.path.join(self.cfg.train.out, 'checkpoint')
         if not os.path.exists(self.sample_dir):
@@ -51,8 +65,8 @@ class PGGAN():
 
     def register_on_gpu(self):
         if self.use_cuda:
-            self.G.cuda()
-            self.D.cuda()
+            self.G.to(self.device)
+            self.D.to(self.device)
 
     def create_optimizer(self):
         self.optim_G = optim.Adam(self.G.parameters(), lr=self.cfg.train.parameters.g_lr, betas=(self.cfg.train.parameters.beta1, self.cfg.train.parameters.beta2))
@@ -75,14 +89,36 @@ class PGGAN():
     def compute_additional_g_loss(self):
         return 0.0
 
-    def compute_additional_d_loss(self, x_real, x_fake):
+    def compute_additional_d_loss(self, cur_level):
         # drifting loss and gradient penalty, weighting inside this function
         if self.cfg.train.loss_type == 'wgan-gp':
-            d_loss_gp = gradient_penalty(x_real, x_fake, self.D)
-            d_loss_drift = 0. # TODO
-            return d_loss_drift + d_loss_gp * self.cfg.train.parameters.lambda_gp
+            d_loss_gp = self.gradient_penalty(cur_level)
+            d_loss_drift = 0.001 # TODO
+            return d_loss_drift * torch.mean(self.d_real ** 2) + d_loss_gp * self.cfg.train.parameters.lambda_gp
         else:
             return 0.
+
+    def gradient_penalty(self, cur_level):
+        epsilon = torch.rand(self.real.shape[0], 1, 1, 1).to(self.device).expand_as(self.real)
+        x_hat = torch.autograd.Variable(epsilon * self.real.data + (1 - epsilon) * self.fake.data, requires_grad=True)
+
+        d_hat = self.D(x_hat, cur_level=cur_level)
+
+        if isinstance(d_hat, list) or isinstance(d_hat, tuple):
+            d_hat = d_hat[0]
+
+        grad = torch.autograd.grad(outputs=d_hat,
+                                   inputs=x_hat,
+                                   grad_outputs=torch.ones(d_hat.shape).to(self.device),
+                                   retain_graph=True,
+                                   create_graph=True,
+                                   only_inputs=True)[0]
+
+        grad = grad.view(grad.shape[0], -1)
+        grad_norm = torch.sqrt(torch.sum(grad ** 2, dim=1))
+        d_loss_gp = torch.mean((grad_norm - 1) ** 2)
+
+        return d_loss_gp
 
     def _get_data(self, d):
         return d.data[0] if isinstance(d, Variable) else d
@@ -94,11 +130,11 @@ class PGGAN():
         self.g_add_loss = self._get_data(g_add_loss)
         return g_adv_loss + g_add_loss
 
-    def compute_D_loss(self):
+    def compute_D_loss(self, cur_level):
         self.d_adv_loss_real = self.compute_adv_loss(self.d_real, True, 0.5)
         self.d_adv_loss_fake = self.compute_adv_loss(self.d_fake, False, 0.5) * self.cfg.train.parameters.lambda_d_fake
         d_adv_loss = self.d_adv_loss_real + self.d_adv_loss_fake
-        d_add_loss = self.compute_additional_d_loss(self.real, self.fake)
+        d_add_loss = self.compute_additional_d_loss(cur_level)
         self.d_adv_loss = self._get_data(d_adv_loss)
         self.d_add_loss = self._get_data(d_add_loss)
  
@@ -137,7 +173,7 @@ class PGGAN():
     def _numpy2var(self, x):
         var = Variable(torch.from_numpy(x))
         if self.use_cuda:
-            var = var.cuda()
+            var = var.to(self.device)
         return var
 
     def _var2numpy(self, var):
@@ -158,7 +194,7 @@ class PGGAN():
 
     def preprocess(self, z, real):
         self.z = self._numpy2var(z)
-        self.real = Variable(real).cuda()
+        self.real = Variable(real).to(self.device)
         #self.real = self._numpy2var(real)
 
     def forward_G(self, cur_level):
@@ -176,8 +212,8 @@ class PGGAN():
         self.optim_G.step()
         self.g_loss = self._get_data(g_loss)
 
-    def backward_D(self, retain_graph=False):
-        d_loss = self.compute_D_loss()
+    def backward_D(self, cur_level, retain_graph=False):
+        d_loss = self.compute_D_loss(cur_level)
         d_loss.backward(retain_graph=retain_graph)
         self.optim_D.step()
         self.d_loss = self._get_data(d_loss)
@@ -224,6 +260,7 @@ class PGGAN():
     def train_phase(self, R, phase, batch_size, cur_nimg, from_it, total_it):
         assert total_it >= from_it
         resol = 2 ** (R+1)
+        print(f'current R:{R} resol:{resol}')
 
         self.dataset.shuffle()
         dataset_len = len(self.dataset)
@@ -249,14 +286,14 @@ class PGGAN():
                     x = torch.cat((x, self.dataset[(it * batch_size + b) % dataset_len].view(1, x.shape[1], x.shape[2], x.shape[3])), dim=0)
 
             # ===preprocess===
-            self.preprocess(z, x)
+            self.preprocess(z, real=x)
             self.update_lr(cur_nimg)
 
             # ===update D===
             self.optim_G.zero_grad()
             self.optim_D.zero_grad()
             self.forward_D(cur_level, detach=True)
-            self.backward_D()
+            self.backward_D(cur_level)
 
             # ===update G===
             self.optim_G.zero_grad()

@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 from models.base_model import *
 
+device = 'cpu'
 
-def G_conv(incoming, in_channels, out_channels, kernel_size, padding, activation, init, param=None, to_sequential=True, use_wscale=True, use_batchnorm=False, use_pixelnorm=True):
+def G_conv(incoming, in_channels, out_channels, kernel_size, padding, activation, init, param=None, to_sequential=True, use_wscale=True, use_batchnorm=False, use_pixelnorm=True, device='cpu'):
     layers = incoming
     layers += [nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=1, padding=padding)]
     he_init(layers[-1], init, param)  # init layers
     if use_wscale:
-        layers += [WScaleLayer(layers[-1])]
+        layers += [WScaleLayer(layers[-1], device)]
     layers += [activation]
     if use_batchnorm:
         layers += [nn.BatchNorm2d(out_channels)]
@@ -20,12 +21,12 @@ def G_conv(incoming, in_channels, out_channels, kernel_size, padding, activation
 
 
 def NINLayer(incoming, in_channels, out_channels, activation, init, param=None, 
-            to_sequential=True, use_wscale=True):
+            to_sequential=True, use_wscale=True, device=device):
     layers = incoming
     layers += [nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1, padding=0)]  # NINLayer in lasagne
     he_init(layers[-1], init, param)  # init layers
     if use_wscale:
-        layers += [WScaleLayer(layers[-1])]
+        layers += [WScaleLayer(layers[-1], device)]
     if not (activation == 'linear'):
         layers += [activation]
     if to_sequential:
@@ -35,7 +36,7 @@ def NINLayer(incoming, in_channels, out_channels, activation, init, param=None,
 
 
 class Generator(nn.Module):
-    def __init__(self, target_size, model_cfg):
+    def __init__(self, target_size, model_cfg, xpu):
         super(Generator, self).__init__()
         self.target_size = target_size
         self.model_cfg = model_cfg
@@ -46,6 +47,7 @@ class Generator(nn.Module):
         self.use_pixelnorm = self.model_cfg.use_pixelnorm
         self.activation = self.model_cfg.activation
         self.tanh_at_end = self.model_cfg.tanh_at_end
+        self.device = xpu
 
         R = int(np.log2(target_size))
         assert target_size == 2**R and target_size >= 4
@@ -67,19 +69,19 @@ class Generator(nn.Module):
             pre = PixelNormLayer()
 
         layers += [ReshapeLayer([self.z_dim, 1, 1])]
-        layers = G_conv(layers, self.z_dim, self.get_nf(1), 4, 3, act, init_act, negative_slope, False, self.use_wscale, self.use_batchnorm, self.use_pixelnorm) # instead of linear layer to z 
-        net = G_conv(layers, self.get_nf(1), self.get_nf(1), 3, 1, act, init_act, negative_slope, True, self.use_wscale, self.use_batchnorm, self.use_pixelnorm)  # first block
-        
+        layers = G_conv(layers, self.z_dim, self.get_nf(1), 4, 3, act, init_act, negative_slope, False, self.use_wscale, self.use_batchnorm, self.use_pixelnorm, self.device) # instead of linear layer to z 
+        net = G_conv(layers, self.get_nf(1), self.get_nf(1), 3, 1, act, init_act, negative_slope, True, self.use_wscale, self.use_batchnorm, self.use_pixelnorm, self.device)  # first block
+    
         lods.append(net)
-        nins.append(NINLayer([], self.get_nf(1), 3, output_act, output_init_act, None, True, self.use_wscale))  # to_rgb layer
+        nins.append(NINLayer([], self.get_nf(1), 3, output_act, output_init_act, None, True, self.use_wscale, self.device))  # to_rgb layer
 
         for I in range(2, R):  # following blocks
             in_ch, out_ch = self.get_nf(I-1), self.get_nf(I)
             layers = [nn.Upsample(scale_factor=2, mode='nearest')]  # upsample
-            layers = G_conv(layers, in_ch, out_ch, 3, 1, act, init_act, negative_slope, False, self.use_wscale, self.use_batchnorm, self.use_pixelnorm)
-            net = G_conv(layers, out_ch, out_ch, 3, 1, act, init_act, negative_slope, True, self.use_wscale, self.use_batchnorm, self.use_pixelnorm)
+            layers = G_conv(layers, in_ch, out_ch, 3, 1, act, init_act, negative_slope, False, self.use_wscale, self.use_batchnorm, self.use_pixelnorm, self.device)
+            net = G_conv(layers, out_ch, out_ch, 3, 1, act, init_act, negative_slope, True, self.use_wscale, self.use_batchnorm, self.use_pixelnorm, self.device)
             lods.append(net)
-            nins.append(NINLayer([], out_ch, 3, output_act, output_init_act, None, True, self.use_wscale))  # to_rgb layer
+            nins.append(NINLayer([], out_ch, 3, output_act, output_init_act, None, True, self.use_wscale, self.device))  # to_rgb layer
         self.output_layer = GSelectLayer(pre, lods, nins)
 
     def get_nf(self, stage):
@@ -90,14 +92,14 @@ class Generator(nn.Module):
 
 
 def D_conv(incoming, in_channels, out_channels, kernel_size, padding, activation, init, param=None, 
-        to_sequential=True, use_wscale=True, use_gdrop=True, use_layernorm=False, gdrop_param=dict()):
+        to_sequential=True, use_wscale=True, use_gdrop=True, use_layernorm=False, gdrop_param=dict(), device='cpu'):
     layers = incoming
     if use_gdrop:
         layers += [GDropLayer(**gdrop_param)]
     layers += [nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=1, padding=padding)]
     he_init(layers[-1], init, param)  # init layers
     if use_wscale:
-        layers += [WScaleLayer(layers[-1])]
+        layers += [WScaleLayer(layers[-1], device)]
     layers += [activation]
     if use_layernorm:
         layers += [LayerNormLayer()]  # TODO: requires incoming layer
@@ -108,7 +110,7 @@ def D_conv(incoming, in_channels, out_channels, kernel_size, padding, activation
 
 
 class Discriminator(nn.Module):
-    def __init__(self, target_size, model_cfg): 
+    def __init__(self, target_size, model_cfg, xpu): 
         super(Discriminator, self).__init__()
         self.target_size = target_size
         self.mbstat_avg = 'all'
@@ -119,6 +121,7 @@ class Discriminator(nn.Module):
         self.use_gdrop = self.model_cfg.use_gdrop
         self.use_layernorm = self.model_cfg.use_layernorm
         self.sigmoid_at_end = self.model_cfg.sigmoid_at_end
+        self.device = xpu
 
         R = int(np.log2(target_size))
         assert target_size == 2**R and target_size >= 4
@@ -137,19 +140,19 @@ class Discriminator(nn.Module):
         lods = nn.ModuleList()
         pre = None
 
-        nins.append(NINLayer([], 3, self.get_nf(R-1), act, init=init_act, param=negative_slope, to_sequential=True, use_wscale=self.use_wscale))
+        nins.append(NINLayer([], 3, self.get_nf(R-1), act, init=init_act, param=negative_slope, to_sequential=True, use_wscale=self.use_wscale, device=self.device))
 
         for I in range(R-1, 1, -1):
             in_ch, out_ch = self.get_nf(I), self.get_nf(I-1)
             net = D_conv([], in_ch, in_ch, 3, 1, act, init_act, negative_slope, False, 
-                        self.use_wscale, self.use_gdrop, self.use_layernorm, gdrop_param)
+                        self.use_wscale, self.use_gdrop, self.use_layernorm, gdrop_param, self.device)
             net = D_conv(net, in_ch, out_ch, 3, 1, act, init_act, negative_slope, False, 
-                        self.use_wscale, self.use_gdrop, self.use_layernorm, gdrop_param)
+                        self.use_wscale, self.use_gdrop, self.use_layernorm, gdrop_param, self.device)
             net += [nn.AvgPool2d(kernel_size=2, stride=2, ceil_mode=False, count_include_pad=False)]
             lods.append(nn.Sequential(*net))
             # nin = [nn.AvgPool2d(kernel_size=2, stride=2, ceil_mode=False, count_include_pad=False)]
             nin = []
-            nin = NINLayer(nin, 3, out_ch, act, init_act, negative_slope, True, self.use_wscale)
+            nin = NINLayer(nin, 3, out_ch, act, init_act, negative_slope, True, self.use_wscale, self.device)
             nins.append(nin)
 
         net = []
@@ -158,9 +161,9 @@ class Discriminator(nn.Module):
             net += [MinibatchStatConcatLayer(averaging=self.mbstat_avg)]
             in_ch += 1
         net = D_conv(net, in_ch, out_ch, 3, 1, act, init_act, negative_slope, False, 
-                    self.use_wscale, self.use_gdrop, self.use_layernorm, gdrop_param)
+                    self.use_wscale, self.use_gdrop, self.use_layernorm, gdrop_param, self.device)
         net = D_conv(net, out_ch, self.get_nf(0), 4, 0, act, init_act, negative_slope, False,
-                    self.use_wscale, self.use_gdrop, self.use_layernorm, gdrop_param)
+                    self.use_wscale, self.use_gdrop, self.use_layernorm, gdrop_param, self.device)
 
         # Increasing Variation Using MINIBATCH Standard Deviation
         if self.mbdisc_kernels:
@@ -168,7 +171,7 @@ class Discriminator(nn.Module):
 
         out_ch = 1
         # lods.append(NINLayer(net, self.get_nf(0), oc, 'linear', 'linear', None, True, self.use_wscale))
-        lods.append(NINLayer(net, self.get_nf(0), out_ch, output_act, output_init_act, None, True, self.use_wscale))
+        lods.append(NINLayer(net, self.get_nf(0), out_ch, output_act, output_init_act, None, True, self.use_wscale, self.device))
 
         self.output_layer = DSelectLayer(pre, lods, nins)
 

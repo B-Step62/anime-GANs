@@ -16,6 +16,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('config', type=str)
     parser.add_argument('--gpu', default=0, type=int, help='gpu to use.')
+    parser.add_argument('--resume', default=None)
     args = parser.parse_args()
     return args
 
@@ -29,15 +30,22 @@ def train():
     # Use sigmoid activation for the last layer?
     cfg.models.discriminator.sigmoid_at_end = cfg.train.loss_type in ['ls', 'gan']
 
-    G = Generator(model_cfg=cfg.models.generator, target_size=cfg.train.target_size)
-    D = Discriminator(model_cfg=cfg.models.discriminator, target_size=cfg.train.target_size)
+    cuda = torch.cuda.is_available()
+    if cuda and args.gpu >= 0:
+        print('# cuda available! #')
+        device = torch.device(f'cuda:{args.gpu}')
+    else:
+        device = 'cpu'
+
+    G = Generator(model_cfg=cfg.models.generator, target_size=cfg.train.target_size, xpu=device)
+    D = Discriminator(model_cfg=cfg.models.discriminator, target_size=cfg.train.target_size, xpu=device)
     #print(G)
     #print(D)
     dataset = FaceDataset(cfg.train.dataset)
     assert len(dataset) > 0
     print(f'train dataset contains {len(dataset)} images.')
     z_generator = RandomNoiseGenerator(cfg.models.generator.z_dim, 'gaussian')
-    pggan = PGGAN(G, D, dataset, z_generator, args.gpu, cfg)
+    pggan = PGGAN(G, D, dataset, z_generator, device, cfg, args.resume)
     pggan.train()
 
 if __name__ == '__main__':

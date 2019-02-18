@@ -60,18 +60,8 @@ def main():
     else:
         device = 'cpu'
 
-    if cfg.models.model_type == 'dcgan':
-        gen = getattr(dcgan, cfg.models.generator.name)(z_dim=cfg.models.generator.z_dim, norm=cfg.models.generator.norm).to(device)
-        dis = getattr(dcgan, cfg.models.discriminator.name)(norm=cfg.models.discriminator.norm, use_sigmoid=cfg.models.discriminator.use_sigmoid).to(device)
-
-    elif cfg.models.model_type == 'resgan':
-        gen = getattr(resgan, cfg.models.generator.name)(z_dim=cfg.models.generator.z_dim, norm=cfg.models.generator.norm).to(device)
-        dis = getattr(resgan, cfg.models.discriminator.name)(norm=cfg.models.discriminator.norm, use_sigmoid=cfg.models.discriminator.use_sigmoid).to(device)
-
-    elif cfg.models.model_type == 'sn_projection':
-        gen = getattr(sn_projection, cfg.models.generator.name)(z_dim=cfg.models.generator.z_dim, norm=cfg.models.generator.norm, n_classes=cfg.train.n_classes).to(device)
-        dis = getattr(sn_projection, cfg.models.discriminator.name)(norm=cfg.models.discriminator.norm, n_classes=cfg.train.n_classes).to(device)
-
+    gen = getattr(dcgan, cfg.models.generator.name)(z_dim=cfg.models.generator.z_dim, norm=cfg.models.generator.norm).to(device)
+    dis = getattr(dcgan, cfg.models.discriminator.name)(norm=cfg.models.discriminator.norm, use_sigmoid=cfg.models.discriminator.use_sigmoid).to(device)
 
     train_dataset = FaceDataset(cfg, cfg.train.dataset)
     train_loader = torch.utils.data.DataLoader(
