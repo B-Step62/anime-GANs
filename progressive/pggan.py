@@ -268,7 +268,7 @@ class PGGAN():
             if phase == 'stabilize':
                 cur_level = R
             else:
-                cur_level = R + total_it/float(from_it) - 1
+                cur_level = R + total_it/float(from_it) - 1  
             cur_resol = 2 ** int(np.ceil(cur_level+1))
 
             # set current image size
@@ -312,10 +312,10 @@ class PGGAN():
                 samples = self.sample()
                 #imsave(os.path.join(self.sample_dir,
                 #                    '%dx%d-%s-%s.png' % (cur_resol, cur_resol, phase, str(it).zfill(6))), samples)
-                save_image((self.fake.data.cpu() + 1.0) * 0.5, os.path.join(self.sample_dir, '%dx%d-%s-%s.png' % (cur_resol, cur_resol, phase, str(it).zfill(6))), padding=min(2, cur_resol//8))
+                save_image((self.fake.data.cpu() + 1.0) * 0.5, os.path.join(self.sample_dir, '%dx%d-%s-%s.png' % (cur_resol, cur_resol, phase, str(it).zfill(6))), padding=0)
 
             if it == from_it:
-                save_image((self.real.data.cpu() + 1.0) * 0.5, os.path.join(self.sample_dir, '%dx%d_real.png' % (cur_resol, cur_resol)), padding=min(2, cur_resol//8))
+                save_image((self.real.data.cpu() + 1.0) * 0.5, os.path.join(self.sample_dir, '%dx%d_real.png' % (cur_resol, cur_resol)), padding=0)
 
             # ===tensorboard visualization===
             if (it % self.cfg.train.preview_interval == 0) or it == total_it - 1:
@@ -335,6 +335,9 @@ class PGGAN():
         from_level = int(np.log2(self._from_resol))
         assert 2**to_level == self.cfg.train.target_size and 2**from_level == self._from_resol and to_level >= from_level >= 2
 
+        if self.is_restored and self._phase == 'fade_in':
+            from_level -= 1
+
         train_kimg = int(self.cfg.train.stabilizing_kimg * 1000)
         transition_kimg = int(self.cfg.train.transition_kimg * 1000)
 
@@ -348,6 +351,7 @@ class PGGAN():
                     del phases['stabilize']
 
             for phase in ['stabilize', 'fade_in']:
+                print(self._phase, phase, from_level, R)
                 if phase in phases:
                     _range = phases[phase]
                     self.train_phase(R, phase, batch_size, _range[0]*batch_size, _range[0], _range[1])

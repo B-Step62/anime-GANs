@@ -30,7 +30,7 @@ class WScaleLayer(nn.Module):
     """
     Applies equalized learning rate to the preceding layer.
     """
-    def __init__(self, incoming, device):
+    def __init__(self, incoming):
         super(WScaleLayer, self).__init__()
         self.incoming = incoming
         self.scale = (torch.mean(self.incoming.weight.data ** 2)) ** 0.5
@@ -39,10 +39,9 @@ class WScaleLayer(nn.Module):
         if self.incoming.bias is not None:
             self.bias = self.incoming.bias
             self.incoming.bias = None
-        self.device = device
 
     def forward(self, x):
-        x = self.scale.to(self.device) * x
+        x = self.scale * x
         if self.bias is not None:
             x += self.bias.view(1, self.bias.size()[0], 1, 1)
         return x

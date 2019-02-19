@@ -32,7 +32,7 @@ train = dict(
 
      loss_type = 'wgan-gp',
 
-     save_interval = 100000,
+     save_interval = 10000,
      print_interval = 100,
      preview_interval = 1000,
 
