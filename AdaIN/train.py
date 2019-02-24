@@ -143,7 +143,7 @@ def generate_sample(model, content_images, style_images):
     model.eval()
     samples = model.generate(content_images, style_images)
     concat = torch.cat((torch.cat((content_images, style_images), dim=2), samples), dim=2)
-    concat = concat[:min(16, content_images.size()[1]),:,:,:]
+    concat = concat[:min(16, content_images.size()[0]),:,:,:]
     concat = (concat + 1.0) * 0.5
     return concat    
 

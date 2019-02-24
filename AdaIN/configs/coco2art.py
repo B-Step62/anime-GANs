@@ -17,7 +17,7 @@ train = dict(
 
      save_interval = 10000,
      print_interval = 100,
-     preview_interval = 100,
+     preview_interval = 1000,
 
      parameters=dict(
          lr = 0.0001,
