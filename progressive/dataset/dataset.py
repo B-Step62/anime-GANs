@@ -30,7 +30,7 @@ class FaceDataset(Dataset):
         while image is None:
             image = cv2.imread(self.image_paths[idx])
             if image is not None:
-                if image.shape[0] > 200 and image.shape[1] > 200:
+                if image.shape[0] > self.imsize[0] and image.shape[1] > self.imsize[1]:
                     break
                 else:
                     image = None

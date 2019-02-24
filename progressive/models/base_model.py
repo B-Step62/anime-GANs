@@ -1,8 +1,8 @@
 import os
 import sys
 import numpy as np
-import torch
 
+import torch
 import torch.nn as nn
 from torch.autograd import Variable
 from torch.nn.parameter import Parameter
@@ -33,9 +33,10 @@ class WScaleLayer(nn.Module):
     def __init__(self, incoming):
         super(WScaleLayer, self).__init__()
         self.incoming = incoming
-        self.scale = (torch.mean(self.incoming.weight.data ** 2)) ** 0.5
-        self.incoming.weight.data.copy_(self.incoming.weight.data / self.scale)
+        scale = (torch.mean(self.incoming.weight.data ** 2)) ** 0.5
+        self.incoming.weight.data.copy_(self.incoming.weight.data / scale)
         self.bias = None
+        self.scale = scale.cuda()
         if self.incoming.bias is not None:
             self.bias = self.incoming.bias
             self.incoming.bias = None
@@ -257,6 +258,9 @@ class DSelectLayer(nn.Module):
         self.inputs = inputs
         self.N = len(self.chain)
 
+    def get_layers(self, cur_level):
+        return self.chain[:cur_level]       
+
     def forward(self, x, y=None, cur_level=None, insert_y_at=None):
         if cur_level is None:
             cur_level = self.N  # cur_level: physical index
@@ -321,14 +325,14 @@ class ReshapeLayer(nn.Module):
 
 def he_init(layer, nonlinearity='conv2d', param=None):
     nonlinearity = nonlinearity.lower()
-    if nonlinearity not in ['linear', 'conv1d', 'conv2d', 'conv3d', 'relu', 'leaky_relu', 'sigmoid', 'tanh']:
-        if not hasattr(layer, 'gain') or layer.gain is None:
-            gain = 0  # default
-        else:
-            gain = layer.gain
-    elif nonlinearity == 'leaky_relu':
-        assert param is not None, 'Negative_slope(param) should be given.'
-        gain = calculate_gain(nonlinearity, param)
-    else:
-        gain = calculate_gain(nonlinearity)
-    kaiming_normal_(layer.weight, a=gain)
+    #if nonlinearity not in ['linear', 'conv1d', 'conv2d', 'conv3d', 'relu', 'leaky_relu', 'sigmoid', 'tanh']:
+    #    if not hasattr(layer, 'gain') or layer.gain is None:
+    #        gain = 0  # default
+    #    else:
+    #        gain = layer.gain
+    #elif nonlinearity == 'leaky_relu':
+    #    assert param is not None, 'Negative_slope(param) should be given.'
+    #    gain = calculate_gain(nonlinearity, param)
+    #else:
+    #    gain = calculate_gain(nonlinearity)
+    kaiming_normal_(layer.weight, nonlinearity=nonlinearity, a=param)

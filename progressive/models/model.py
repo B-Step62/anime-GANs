@@ -6,11 +6,10 @@ device = 'cpu'
 
 def G_conv(incoming, in_channels, out_channels, kernel_size, padding, activation, init, param=None, to_sequential=True, use_wscale=True, use_batchnorm=False, use_pixelnorm=True, device='cpu'):
     layers = incoming
+    layers += [nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=1, padding=padding)]
+    he_init(layers[-1], init, param)  # init layers
     if use_wscale:
-        layers += [wscaled_conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=1, padding=padding)]
-    else:
-        layers += [nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=1, padding=padding)]
-        he_init(layers[-1], init, param)  # init layers
+        layers += [WScaleLayer(layers[-1])]
     layers += [activation]
     #if use_batchnorm:
     #    layers += [nn.BatchNorm2d(out_channels)]
@@ -25,11 +24,10 @@ def G_conv(incoming, in_channels, out_channels, kernel_size, padding, activation
 def NINLayer(incoming, in_channels, out_channels, activation, init, param=None, 
             to_sequential=True, use_wscale=True, device=device):
     layers = incoming
+    layers += [nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1, padding=0)]  # NINLayer in lasagne
+    he_init(layers[-1], init, param)  # init layers
     if use_wscale:
-        layers += [wscaled_conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1, padding=0)]
-    else:
-        layers += [nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1, padding=0)]  # NINLayer in lasagne
-        he_init(layers[-1], init, param)  # init layers
+        layers += [WScaleLayer(layers[-1])]
     if not (activation == 'linear'):
         layers += [activation]
     if to_sequential:
@@ -99,11 +97,10 @@ def D_conv(incoming, in_channels, out_channels, kernel_size, padding, activation
     layers = incoming
     if use_gdrop:
         layers += [GDropLayer(**gdrop_param)]
+    layers += [nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=1, padding=padding)]
+    he_init(layers[-1], init, param)  # init layers
     if use_wscale:
-        layers += [wscaled_conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=1, padding=padding)]
-    else:
-        layers += [nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=1, padding=padding)]
-        he_init(layers[-1], init, param)  # init layers
+        layers += [WScaleLayer(layers[-1])]
     layers += [activation]
     if use_layernorm:
         layers += [LayerNormLayer()]  # TODO: requires incoming layer
@@ -188,3 +185,14 @@ class Discriminator(nn.Module):
                 module.strength = gdrop_strength
         return self.output_layer(x, y, cur_level, insert_y_at)
 
+    def get_wscale_mul(self, cur_level):
+        modulelists = self.output_layer.get_layers(cur_level)
+        wscale_mul = 1.0
+        for modulelist in modulelists:
+            modules = modulelist._modules
+            for key in modules.keys():
+                module = modules[key]
+                if isinstance(module, WScaleLayer):
+                    if hasattr(module, 'scale'):
+                        wscale_mul = wscale_mul * module.scale
+        return wscale_mul

@@ -1,5 +1,5 @@
 import numpy as np
-import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -16,8 +16,9 @@ class wscaled_conv2d(nn.Module):
         
         conv_w = self.conv.weight.data.clone()
         self.bias = torch.nn.Parameter(torch.FloatTensor(out_channels).fill_(0))
-        self.scale = math.sqrt(2 / (in_channels * kernel_size ** 2))#(torch.mean(self.conv.weight.data ** 2)) ** 0.5
-        self.conv.weight.data.copy_(self.conv.weight.data/self.scale)
+        scale = ((torch.mean(self.conv.weight.data ** 2)) ** 0.5)
+        self.conv.weight.data.copy_(self.conv.weight.data/scale)
+        self.scale = scale.cuda()
 
     def forward(self, x):
         x = self.conv(x.mul(self.scale))

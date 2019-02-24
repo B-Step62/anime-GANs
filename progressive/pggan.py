@@ -10,7 +10,7 @@ from utils.logger import Logger
 from torchvision.utils import save_image
 
 class PGGAN():
-    def __init__(self, G, D, dataset, z_generator, device, cfg, G_resume=None):
+    def __init__(self, G, D, dataset, z_generator, xpu, cfg, G_resume=None):
         self.G = G
         self.G_resume = G_resume
         self.D = D
@@ -19,9 +19,8 @@ class PGGAN():
         self.z_generator = z_generator
         self.current_time = time.strftime('%Y-%m-%d %H%M%S')
         self.logger = Logger('./logs/' + self.current_time + "/")
-        os.environ['CUDA_VISIBLE_DEVICES'] = "0,1"
-        self.use_cuda = device != 'cpu'
-        self.device = device
+        os.environ['CUDA_VISIBLE_DEVICES'] = str(xpu)
+        self.use_cuda = xpu >= 0
 
         self.bs_map = {2**R: self.get_bs(2**R) for R in range(2, 11)} # batch size map keyed by resolution_level
         self.rows_map = {32: 8, 16: 4, 8: 4, 4: 2, 2: 2}
@@ -61,13 +60,13 @@ class PGGAN():
         if R < 7:
             bs = 32 / 2**(max(0, R-4))
         else:
-            bs = 8 / 2**(min(2, R-7))
+            bs = 8 / 2**(min(2, R-6))
         return int(bs)
 
     def register_on_gpu(self):
         if self.use_cuda:
-            self.G.to(self.device)
-            self.D.to(self.device)
+            self.G.cuda()
+            self.D.cuda()
 
     def create_optimizer(self):
         self.optim_G = optim.Adam(self.G.parameters(), lr=self.cfg.train.parameters.g_lr, betas=(self.cfg.train.parameters.beta1, self.cfg.train.parameters.beta2))
@@ -100,7 +99,7 @@ class PGGAN():
             return 0.
 
     def gradient_penalty(self, cur_level):
-        epsilon = torch.rand(self.real.shape[0], 1, 1, 1).to(self.device).expand_as(self.real)
+        epsilon = torch.rand(self.real.shape[0], 1, 1, 1).cuda().expand_as(self.real)
         x_hat = torch.autograd.Variable(epsilon * self.real.data + (1 - epsilon) * self.fake.data, requires_grad=True)
 
         d_hat = self.D(x_hat, cur_level=cur_level)
@@ -110,10 +109,12 @@ class PGGAN():
 
         grad = torch.autograd.grad(outputs=d_hat,
                                    inputs=x_hat,
-                                   grad_outputs=torch.ones(d_hat.shape).to(self.device),
+                                   grad_outputs=torch.ones(d_hat.shape).cuda(),
                                    retain_graph=True,
                                    create_graph=True,
                                    only_inputs=True)[0]
+
+        #wscale_mul = self.D.get_wscale_mul(2)
 
         grad = grad.view(grad.shape[0], -1)
         grad_norm = torch.sqrt(torch.sum(grad ** 2, dim=1))
@@ -174,7 +175,7 @@ class PGGAN():
     def _numpy2var(self, x):
         var = Variable(torch.from_numpy(x))
         if self.use_cuda:
-            var = var.to(self.device)
+            var = var.cuda()
         return var
 
     def _var2numpy(self, var):
@@ -195,7 +196,7 @@ class PGGAN():
 
     def preprocess(self, z, real):
         self.z = self._numpy2var(z)
-        self.real = Variable(real).to(self.device)
+        self.real = Variable(real).cuda()
         #self.real = self._numpy2var(real)
 
     def forward_G(self, cur_level):
@@ -268,7 +269,7 @@ class PGGAN():
             if phase == 'stabilize':
                 cur_level = R
             else:
-                cur_level = R + total_it/float(from_it) - 1  
+                cur_level = R + (it - from_it) / float(total_it - from_it) 
             cur_resol = 2 ** int(np.ceil(cur_level+1))
 
             # set current image size
@@ -327,9 +328,9 @@ class PGGAN():
         
     def train(self):
         # prepare
+        self.register_on_gpu()
         self.create_optimizer()
         self.create_criterion()
-        self.register_on_gpu()
 
         to_level = int(np.log2(self.cfg.train.target_size))
         from_level = int(np.log2(self._from_resol))

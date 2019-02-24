@@ -14,6 +14,7 @@ class FaceDataset(Dataset):
         self.cfg = cfg
         root_paths = data_root
         self.image_paths = sorted(glob.glob(os.path.join(root_paths, '*.png'))) + sorted(glob.glob(os.path.join(root_paths, '*.jpg')))
+        self.crop_size = cfg.train.crop_size if hasattr(cfg.train, 'crop_size') else None
         self.imsize = cfg.train.target_size
 
     def __len__(self):
@@ -24,7 +25,7 @@ class FaceDataset(Dataset):
         while image is None:
             image = cv2.imread(self.image_paths[idx])
             if image is not None:
-                if image.shape[0] > 200 and image.shape[1] > 200:
+                if image.shape[0] > self.imsize * 0.8 and image.shape[1] > self.imsize * 0.8:
                     break
                 else:
                     image = None
@@ -44,7 +45,10 @@ class FaceDataset(Dataset):
             image = tf.rotation(image, degree)
 
         # crop
-        csize = int(w * 0.9) if w < h else int(h * 0.9)
+        if self.crop_size is None:
+            csize = int(w * 0.9) if w < h else int(h * 0.9)
+        else:
+            csize = self.crop_size
         image = tf.random_crop(image, (csize, csize))
 
         # resize
