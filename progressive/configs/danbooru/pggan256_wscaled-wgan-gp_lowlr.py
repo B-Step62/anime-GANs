@@ -46,8 +46,8 @@ train = dict(
      transition_kimg = 600,
 
      parameters=dict(
-         g_lr = 0.001,
-         d_lr = 0.001,
+         g_lr = 0.0001,
+         d_lr = 0.0001,
          beta1 = 0.,
          beta2 = 0.99,
          lambda_gp = 10,

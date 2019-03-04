@@ -39,7 +39,8 @@ def train():
     dataset = FaceDataset(cfg.train.dataset)
     assert len(dataset) > 0
     print(f'train dataset contains {len(dataset)} images.')
-    z_generator = RandomNoiseGenerator(cfg.models.generator.z_dim, 'gaussian')
+    clip = cfg.models.generator.z_clipping if hasattr(cfg.models.generator, 'z_zlipping') else None
+    z_generator = RandomNoiseGenerator(cfg.models.generator.z_dim, 'gaussian', clip=clip)
     pggan = PGGAN(G, D, dataset, z_generator, args.gpu, cfg, args.resume)
     pggan.train()
 

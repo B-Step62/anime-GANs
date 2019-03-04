@@ -10,7 +10,7 @@ from torch.nn.init import kaiming_normal_, calculate_gain
 class wscaled_conv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride, padding, initializer='kaiming', bias=False):
         super(wscaled_conv2d, self).__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, bias=bias)
         if initializer == 'kaiming':    kaiming_normal_(self.conv.weight, a=calculate_gain('conv2d'))
         elif initializer == 'xavier':   xavier_normal(self.conv.weight)
         
