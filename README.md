@@ -2,6 +2,13 @@
 
 ## models
 - dcgan 64, 128
+
+- self-attension GAN
+
+<img src='./assets/sagan/iter_950000.pth_random_30.png' width=400><img src='./assets/sagan/iter_950000.pth_random_27.png' width=400>
+
+<img src='./assets/sagan/iter_950000.pth_morphing_24.gif' width=400><img src='./assets/sagan/iter_950000.pth_morphing_7.gif' width=400>
+
 - progressive growing GAN
 
 <img src='./assets/progressive/256x256-stabilize-299999-G_random_2.png' width=300><img src='./assets/progressive/256x256-stabilize-299999-G_random_5.png' width=300>
@@ -10,13 +17,6 @@
 
 - cycle GAN
 - sn-projection
-- self-attension GAN
-
-<img src='./assets/sagan/iter_950000.pth_random_30.png' width=400><img src='./assets/sagan/iter_950000.pth_random_27.png' width=400>
-
-<img src='./assets/sagan/iter_950000.pth_morphing_14.gif' width=400><img src='./assets/sagan/iter_950000.pth_morphing_7.gif' width=400>
-
-
 - style Generator
 
 
