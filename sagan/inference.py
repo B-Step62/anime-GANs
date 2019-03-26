@@ -77,7 +77,7 @@ def main():
         elif args.mode == 'attention':
             inference_attention(gen, args, cfg,out_file + '.gif')
 
-def get_limited_z(size, dim, _min=-2.0, _max=2.0):
+def get_limited_z(size, dim, _min=-0.5, _max=0.5):
     for i in range(size):
         for j in range(dim):
             while(True):
