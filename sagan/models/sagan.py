@@ -48,7 +48,7 @@ class ResNetGenerator128(torch.nn.Module):
         h = self.b7(h)
         h = self.activation(h)
         h = torch.tanh(self.l7(h))
-        return h
+        return h, attention
 
 class ResNetProjectionDiscriminator128(torch.nn.Module):
     def __init__(self, base=64, n_classes=0, activation=F.relu, norm=None):

@@ -44,6 +44,19 @@ class FaceDataset(Dataset):
             degree = np.random.randint(low, high)
             image = tf.rotation(image, degree)
 
+        # rgb_jittering
+        if hasattr(self.cfg.train.transform, 'rgb_jitter'):
+            r_low, r_high = self.cfg.train.transform.rgb_jitter[0]
+            g_low, g_high = self.cfg.train.transform.rgb_jitter[1]
+            b_low, b_high = self.cfg.train.transform.rgb_jitter[2]
+            _r = np.random.rand() * (r_high - r_low) + r_low
+            _g = np.random.rand() * (g_high - g_low) + g_low
+            _b = np.random.rand() * (b_high - b_low) + b_low
+            rgb_map = np.tile(np.array([[[_r, _g, _b]]]), (w, h, 1))
+            rgb_jitterd_image = np.clip(rgb_map * image, 0., 255.)
+            rgb_jitterd_image = np.uint8(rgb_jitterd_image)
+            image = rgb_jitterd_image
+
         # crop
         if self.crop_size is None:
             csize = int(w * 0.9) if w < h else int(h * 0.9)
@@ -70,7 +83,7 @@ class MultiClassFaceDataset(Dataset):
         root_path_list = cfg.train.dataset_list
 
 
-        if os.path.isfile(root_path_list):
+        if not isinstance(root_path_list, list) and os.path.isfile(root_path_list):
         ## danbooru face dataset
             with open(root_path_list, 'r') as f:
                 line = f.readline().strip()
@@ -126,6 +139,19 @@ class MultiClassFaceDataset(Dataset):
             low, high = self.cfg.train.transform.rotation  
             degree = np.random.randint(low, high)
             image = tf.rotation(image, degree)
+
+        # rgb_jittering
+        if hasattr(self.cfg.train.transform, 'rgb_jitter'):
+            r_low, r_high = self.cfg.train.transform.rgb_jitter[0]
+            g_low, g_high = self.cfg.train.transform.rgb_jitter[1]
+            b_low, b_high = self.cfg.train.transform.rgb_jitter[2]
+            _r = np.random.rand() * (r_high - r_low) + r_low
+            _g = np.random.rand() * (g_high - g_low) + g_low
+            _b = np.random.rand() * (b_high - b_low) + b_low
+            rgb_map = np.tile(np.array([[[_r, _g, _b]]]), (w, h, 1))
+            rgb_jitterd_image = np.clip(rgb_map * image, 0., 255.)
+            rgb_jitterd_image = np.uint8(rgb_jitterd_image)
+            image = rgb_jitterd_image
 
         # crop
         csize = int(w * 0.9) if w < h else int(h * 0.9)

@@ -14,7 +14,7 @@ from torchvision.utils import save_image
 
 sys.path.append(os.pardir)
 from models import sagan 
-from common.dataset.dataset import FaceDataset
+from common.dataset.dataset import MultiClassFaceDataset
 from common.utils.config import Config
 from common.utils.poly_lr_scheduler import poly_lr_scheduler
 from common.functions.gradient_penalty import gradient_penalty
@@ -23,7 +23,6 @@ def parse_args():
     parser = argparse.ArgumentParser(description='MultiClassGAN')
     parser.add_argument('config', type=str)
     parser.add_argument('--gpu', type=int, default=0)
-    parser.add_argument('--restart', type=int, default=None)
     args = parser.parse_args()
     return args
 
@@ -63,10 +62,7 @@ def main():
         device = 'cpu'
 
 
-    gen = getattr(sagan, cfg.models.generator.name)(z_dim=cfg.models.generator.z_dim, norm=cfg.models.generator.norm).to(device)
-    dis = getattr(sagan, cfg.models.discriminator.name)(norm=cfg.models.discriminator.norm).to(device)
-
-    train_dataset = FaceDataset(cfg, cfg.train.dataset)
+    train_dataset = MultiClassFaceDataset(cfg, cfg.train.dataset)
     train_loader = torch.utils.data.DataLoader(
             train_dataset,
             batch_size=cfg.train.batchsize,
@@ -76,32 +72,22 @@ def main():
             drop_last=True)
     print(f'train dataset contains {len(train_dataset)} images.')
 
+    n_classes = len(cfg.train.dataset_list)
+    gen = getattr(sagan, cfg.models.generator.name)(z_dim=cfg.models.generator.z_dim, n_classes=n_classes, norm=cfg.models.generator.norm).to(device)
+    dis = getattr(sagan, cfg.models.discriminator.name)(n_classes=n_classes, norm=cfg.models.discriminator.norm).to(device)
+ 
 
     beta1 = cfg.train.parameters.adam_beta1
     beta2 = cfg.train.parameters.adam_beta2
     opt_gen = Adam(gen.parameters(), lr=cfg.train.parameters.g_lr, betas=(beta1, beta2))
     opt_dis = Adam(dis.parameters(), lr=cfg.train.parameters.d_lr, betas=(beta1, beta2))
 
-    # restore
-    iteration = 0
-    if args.restart is not None:
-        checkpoint_path = os.path.join(out, 'checkpoint', f'iter_{args.restart:04d}.pth.tar')
-        if os.path.isfile(checkpoint_path):
-            checkpoint = torch.load(checkpoint_path)
-            gen.load_state_dict(checkpoint['gen_state_dict'])
-            dis.load_state_dict(checkpoint['dis_state_dict'])
-            opt_gen.load_state_dict(checkpoint['opt_gen_state_dict'])
-            opt_dis.load_state_dict(checkpoint['opt_dis_state_dict'])
-            iteration = checkpoint['iteration']
-        else:
-            print(f'=> no checkpoint found at {checkpoint_path}')
-
-
     if loss_type == 'ls':
         criterion = torch.nn.MSELoss().to(device)
     elif loss_type == 'hinge':
         criterion = torch.nn.ReLU().to(device)
 
+    iteration = 0
     batchsize = cfg.train.batchsize
     iterations_per_epoch = len(train_loader)
     epochs = cfg.train.iterations // iterations_per_epoch
@@ -115,15 +101,23 @@ def main():
         for i, batch in enumerate(train_loader):
             for j in range(cfg.train.discriminator_iter):
                 # Update Dicscriminator
-                x_real = Variable(batch).to(device)
-
                 z = Variable(torch.randn((batchsize, cfg.models.generator.z_dim))).to(device)
+                x_fake_label = Variable(torch.randint(0, n_classes, (batchsize,), dtype=torch.long)).to(device)
+
+                x_real_data = torch.zeros((batchsize, 3, cfg.train.target_size, cfg.train.target_size))
+                x_real_label_data = torch.zeros(batchsize, dtype=torch.long)
+                for k in range(batchsize):
+                    x_real_data[k,:,:,:] += batch[0][k]
+                    x_real_label_data[k] += batch[1][k]
+
+                x_real = Variable(x_real_data).to(device)
+                x_real_label = Variable(x_real_label_data).to(device)
 
                 with torch.no_grad():
-                    x_fake = gen(z).detach()
+                    x_fake = gen(z, y=x_fake_label).detach()
 
-                d_real = dis(x_real)
-                d_fake = dis(x_fake)
+                d_real = dis(x_real, y=x_real_label)
+                d_fake = dis(x_fake, y=x_fake_label)
  
                 if loss_type == 'ls':
                     d_loss_fake = criterion(d_fake, y_fake)
@@ -148,9 +142,10 @@ def main():
 
                 if j == 0:
                     z = Variable(torch.randn((batchsize, cfg.models.generator.z_dim))).to(device)
+                    x_fake_label = Variable(torch.randint(0, n_classes, (batchsize,), dtype=torch.long)).to(device)
 
-                    x_fake = gen(z)
-                    d_fake = dis(x_fake)
+                    x_fake = gen(z, y=x_fake_label)
+                    d_fake = dis(x_fake, y=x_fake_label)
                     if loss_type == 'ls':
                         g_loss = criterion(d_fake, y_real)
                     elif loss_type == 'wgan-gp':
