@@ -1,9 +1,11 @@
+
+
 # [WIP] Anime illust generation using various GANs
 
 ## models
 - dcgan 64, 128
 
-- self-attension GAN
+- self-attention GAN
 
 <img src='./assets/sagan/iter_950000.pth_random_30.png' width=400><img src='./assets/sagan/iter_950000.pth_random_27.png' width=400>
 
@@ -25,5 +27,3 @@
 
 [1] [PROGRESSIVE GROWING OF GANS FOR IMPROVED QUALITY, STABILITY, AND VARIATION](https://arxiv.org/abs/1710.10196)
 [2] [Self-Attention Generative Adversarial Networks](https://arxiv.org/abs/1805.08318)
-
-
